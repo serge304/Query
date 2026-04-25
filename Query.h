@@ -1,6 +1,9 @@
 #ifndef QUERIES_H
 #define QUERIES_H
 
+#include <Numeric.h>
+#include <Quantile.h>
+
 namespace detail {
 
 // C++14 polyfill для std::void_t
@@ -151,15 +154,6 @@ class transform_iterator
     Operation op;
 
 public:
-    // // Вывод типа результата операции. Использует SFINAE-дружественный decltype.
-    // using result_type = decltype(std::declval<const Operation&>()(*std::declval<const It&>()));
-
-    // using value_type = typename std::decay<result_type>::type;
-    // using reference  = result_type;
-    // using pointer    = void; // operator-> не поддерживается для временных преобразованных значений
-    // using difference_type = typename std::iterator_traits<It>::difference_type;
-    // using iterator_category = std::input_iterator_tag; // Безопасная категория для поэлементного преобразования
-
     using raw_result = decltype(detail::invoke(std::declval<const Operation&>(), *std::declval<const It&>()));
     using iterator_category = typename std::conditional<std::is_reference<raw_result>::value, std::forward_iterator_tag, std::input_iterator_tag>::type;
     using value_type = typename std::decay<raw_result>::type;
@@ -281,11 +275,6 @@ auto is_greater_equal(T value) { return [val = std::move(value)](auto&& x) { ret
 
 namespace Query
 {
-using namespace std::placeholders;
-
-// *********************************************************
-// ************ контейнер одной пары итераторов ************
-// *********************************************************
 
 template<class ForwardIterator>
 class QueryContainer
@@ -296,214 +285,56 @@ public:
     QueryContainer(ForwardIterator f, ForwardIterator l)
         : first(std::move(f)), last(std::move(l)) {}
 
-    // ------------------------------------------------------------------------
-    // Where — фильтрация
-    // ------------------------------------------------------------------------
-    template<class Predicate>
-    auto Where(Predicate pred) const
-        // -> detail::enable_if_predicate<Predicate, value_type,
-        //                                QueryContainer<skip_iterator<
-        //                                    typename std::decay<Predicate>::type,
-        //                                    ForwardIterator>>>
+    template<class A> auto Apply(A&& Op) const 
     {
-        using PredDecay = typename std::decay<Predicate>::type;
-        using SkipIter  = skip_iterator<PredDecay, ForwardIterator>;
-
-        return QueryContainer<SkipIter>(
-            SkipIter(first, last, std::move(pred)),
-            SkipIter(last, last, std::move(pred))
-            );
+        using IterT = transform_iterator<typename std::decay<A>::type, ForwardIterator>;
+        return QueryContainer<IterT>(
+            transform_iterator(first, Op), transform_iterator(last, std::forward<A>(Op)));    
     }
 
-    // ------------------------------------------------------------------------
-    // Apply — преобразование
-    // ------------------------------------------------------------------------
-    template<class UnaryOp>
-    auto Apply(UnaryOp op) const
-        -> detail::enable_if_unary_op<UnaryOp, value_type,
-                                      QueryContainer<transform_iterator<
-                                          typename std::decay<UnaryOp>::type,
-                                          ForwardIterator>>>
-    {
-        using OpDecay = typename std::decay<UnaryOp>::type;
-        using TransIter = transform_iterator<OpDecay, ForwardIterator>;
-
-        return QueryContainer<TransIter>(
-            TransIter(first, std::move(op)),
-            TransIter(last, std::move(op))
-            );
+    template<class A> auto Where(A&& Op) const 
+    { 
+        using IterT = skip_iterator<typename std::decay<A>::type, ForwardIterator>;
+        return QueryContainer<IterT>(
+            skip_iterator(first, last, Op), skip_iterator(last, last, std::forward<A>(Op)));
     }
 
-    // ------------------------------------------------------------------------
-    // Агрегатные операции
-    // ------------------------------------------------------------------------
-    template<class Compare>
-    auto Max(Compare comp) const -> value_type
-    {
-        return first != last
-                   ? *std::max_element(first, last, std::move(comp))
-                   : value_type();
-    }
+    auto ExcludeLastElement() const                            { return QueryContainer(first, first != last ? std::prev(last) : last); }
 
-    auto Max() const -> value_type
-    {
-        return first != last
-                   ? *std::max_element(first, last)
-                   : value_type();
-    }
+    auto Accumulate() const                                    { return std::accumulate(first, last, 0);          }
+    template<class T = value_type> auto Average() const        { return average<ForwardIterator, T>(first, last); }
+    auto Median() const                                        { return median(first, last);                      }
+    auto Quantile(size_t n) const                              { return GetQuantile(first, last, n);              }
 
-    template<class Compare>
-    auto Min(Compare comp) const -> value_type
-    {
-        return first != last
-                   ? *std::min_element(first, last, std::move(comp))
-                   : value_type();
-    }
+    template<class A> auto Max(A&& Op) const                   { return first != last ? *std::max_element(first, last, std::forward<A>(Op)) : value_type(); }
+    template<class A> auto Min(A&& Op) const                   { return first != last ? *std::min_element(first, last, std::forward<A>(Op)) : value_type(); }
+    auto Max() const                                           { return first != last ? *std::max_element(first, last)                      : value_type(); }
+    auto Min() const                                           { return first != last ? *std::min_element(first, last)                      : value_type(); }
+    auto Spread() const                                        { return first != last ? Max() - Min()                                       : value_type(); }
 
-    auto Min() const -> value_type
-    {
-        return first != last
-                   ? *std::min_element(first, last)
-                   : value_type();
-    }
+    size_t Count() const                                       { return first == last ? 0 : std::distance(first, last);  }
+    size_t Count(const value_type& val) const                  { return std::count(first, last, val);                    }
+    template<class A> size_t CountIf(A&& Op) const             { return std::count_if(first, last, std::forward<A>(Op)); }
 
-    auto Spread() const -> value_type
-    {
-        return first != last ? Max() - Min() : value_type();
-    }
+    template<class A> void Do(A&& Op) const                    { std::for_each(first, last, std::forward<A>(Op));           }
+    template<class Container> void Insert(Container& C) const  { std::copy(first, last, back_inserter(C));                  }
+    template<class A> bool Any(A&& Op) const                   { return std::any_of(first, last, std::forward<A>(Op));      }
+    template<class A> bool None(A&& Op) const                  { return std::none_of(first, last, std::forward<A>(Op));     }
+    template<class A> bool All(A&& Op) const                   { return std::all_of(first, last, std::forward<A>(Op));      }
 
-    // ------------------------------------------------------------------------
-    // Статистика
-    // ------------------------------------------------------------------------
-    size_t Count() const noexcept
-    { return static_cast<size_t>(std::distance(first, last)); }
-
-    size_t Count(const value_type& val) const
-    { return std::count(first, last, val); }
-
-    template<class Predicate>
-    auto CountIf(Predicate pred) const
-        -> detail::enable_if_predicate<Predicate, value_type, size_t>
-    {
-        return std::count_if(first, last, std::move(pred));
-    }
-
-    template<class Predicate>
-    auto Any(Predicate pred) const
-        -> detail::enable_if_predicate<Predicate, value_type, bool>
-    {
-        return std::any_of(first, last, std::move(pred));
-    }
-
-    template<class Predicate>
-    auto None(Predicate pred) const
-        -> detail::enable_if_predicate<Predicate, value_type, bool>
-    {
-        return std::none_of(first, last, std::move(pred));
-    }
-
-    template<class Predicate>
-    auto All(Predicate pred) const
-        -> detail::enable_if_predicate<Predicate, value_type, bool>
-    {
-        return std::all_of(first, last, std::move(pred));
-    }
-
-    // ------------------------------------------------------------------------
-    // Побочные эффекты
-    // ------------------------------------------------------------------------
-    template<class UnaryFunc>
-    void Do(UnaryFunc func) const
-    {
-        std::for_each(first, last, std::move(func));
-    }
-
-    template<class Container>
-    void Insert(Container& c) const
-    {
-        std::copy(first, last, std::back_inserter(c));
-    }
-
-    // ------------------------------------------------------------------------
-    // Утилиты диапазона
-    // ------------------------------------------------------------------------
-    [[nodiscard]]
-    QueryContainer ExcludeLastElement() const
-    {
-        return QueryContainer(first, first != last ? std::prev(last) : last);
-    }
-
-    [[nodiscard]]
-    QueryContainer Take(size_t n) const
-    {
-        auto it = first;
-        for (size_t i = 0; i < n && it != last; ++i) ++it;
-        return QueryContainer(first, it);
-    }
-
-    [[nodiscard]]
-    QueryContainer Skip(size_t n) const
-    {
-        auto it = first;
-        for (size_t i = 0; i < n && it != last; ++i) ++it;
-        return QueryContainer(it, last);
-    }
+    template<class A, class... Args> void Call(A&& Op, Args&&... args) const {
+        std::for_each(first, last, std::bind(std::forward<A>(Op), _1, std::forward<Args>(args)...)); }
 
 private:
     ForwardIterator first, last;
 };
 
-// ============================================================================
-// Factory: For()
-// ============================================================================
+//
+// For
+//
 
-template<class ForwardIterator>
-[[nodiscard]]
-auto For(ForwardIterator first, ForwardIterator last)
-    -> QueryContainer<ForwardIterator>
-{
-    return {std::move(first), std::move(last)};
-}
-
-template<class Container>
-[[nodiscard]]
-auto For(Container& container)
-    -> QueryContainer<decltype(container.begin())>
-{
-    return {container.begin(), container.end()};
-}
-
-template<class Container>
-[[nodiscard]]
-auto For(const Container& container)
-    -> QueryContainer<decltype(container.cbegin())>
-{
-    return {container.cbegin(), container.cend()};
-}
-
-template<class Container>
-[[nodiscard]]
-auto For(Container* container)
-    -> QueryContainer<decltype(container->begin())>
-{
-    return {container->begin(), container->end()};
-}
-
-template<class Container>
-[[nodiscard]]
-auto For(const Container* container)
-    -> QueryContainer<decltype(container->cbegin())>
-{
-    return {container->cbegin(), container->cend()};
-}
-
-template<class Container>
-[[nodiscard]]
-auto For(const std::shared_ptr<Container>& container)
-    -> QueryContainer<decltype(container->begin())>
-{
-    return {container->begin(), container->end()};
-}
+template<class ForwardIterator> auto For(ForwardIterator first, ForwardIterator last) { return QueryContainer(first, last); }
+template<class Container>       auto For(const Container& container)                  { return QueryContainer(std::begin(container), std::end(container));     }
 
 }  //namespace Query
 
