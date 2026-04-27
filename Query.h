@@ -2,7 +2,6 @@
 #define QUERIES_H
 
 #include <Numeric.h>
-#include <Quantile.h>
 
 namespace detail {
 
@@ -304,7 +303,6 @@ public:
     auto Accumulate() const                                    { return std::accumulate(first, last, 0);          }
     template<class T = value_type> auto Average() const        { return average<ForwardIterator, T>(first, last); }
     auto Median() const                                        { return median(first, last);                      }
-    auto Quantile(size_t n) const                              { return GetQuantile(first, last, n);              }
 
     template<class A> auto Max(A&& Op) const                   { return first != last ? *std::max_element(first, last, std::forward<A>(Op)) : value_type(); }
     template<class A> auto Min(A&& Op) const                   { return first != last ? *std::min_element(first, last, std::forward<A>(Op)) : value_type(); }
