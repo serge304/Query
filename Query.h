@@ -227,10 +227,10 @@ auto IsNot(OP op, T val) {
 //!
 
 template<typename T>
-auto minus_const(T c) { return [val = std::move(c)](auto&& x) { return std::forward<decltype(x)>(x) - val; }; }
+auto MnusConst(T c) { return [val = std::move(c)](auto&& x) { return std::forward<decltype(x)>(x) - val; }; }
 
 template<typename T>
-auto plus_const(T c) { return [val = std::move(c)](auto&& x) { return std::forward<decltype(x)>(x) + val; }; }
+auto PlusConst(T c) { return [val = std::move(c)](auto&& x) { return std::forward<decltype(x)>(x) + val; }; }
 
 //!
 //! Функторы
@@ -251,22 +251,22 @@ struct NotNull {
 //!
 
 template<typename T>
-auto is_equal_to(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) == val; }; }
+auto Is(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) == val; }; }
 
 template<typename T>
-auto is_not_equal_to(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) != val; }; }
+auto IsNot(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) != val; }; }
 
 template<typename T>
-auto is_less(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) < val; }; }
+auto Less(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) < val; }; }
 
 template<typename T>
-auto is_greater(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) > val; }; }
+auto Greater(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) > val; }; }
 
 template<typename T>
-auto is_less_equal(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) <= val; }; }
+auto LessEqual(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) <= val; }; }
 
 template<typename T>
-auto is_greater_equal(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) >= val; }; }
+auto GreaterEqual(T value) { return [val = std::move(value)](auto&& x) { return std::forward<decltype(x)>(x) >= val; }; }
 
 //!
 //! Преобразования контейнера по цепочке
