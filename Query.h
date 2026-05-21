@@ -2,6 +2,10 @@
 #define QUERIES_H
 
 #include <Numeric.h>
+#include <utility>
+#include <functional>
+#include <algorithm>
+#include <numeric>
 
 namespace detail {
 
@@ -32,32 +36,6 @@ auto invoke(R (C::*fn)(), Arg&& arg) -> R {
 }
 
 // =========================================================================
-// SFINAE-traits, использующие detail::invoke
-// =========================================================================
-
-template<class F, class T, class = void>
-struct is_predicate : std::false_type {};
-
-template<class F, class T>
-struct is_predicate<F, T, void_t<decltype(detail::invoke(std::declval<const F&>(), std::declval<T>()))>>
-    : std::integral_constant<bool,
-                             std::is_convertible<decltype(detail::invoke(std::declval<const F&>(), std::declval<T>())), bool>::value> {};
-
-template<class F, class T, class = void>
-struct is_unary_op : std::false_type {};
-
-template<class F, class T>
-struct is_unary_op<F, T, void_t<decltype(detail::invoke(std::declval<const F&>(), std::declval<T>()))>>
-    : std::integral_constant<bool,
-                             !std::is_void<decltype(detail::invoke(std::declval<const F&>(), std::declval<T>()))>::value> {};
-
-template<class F, class T, class R = void>
-using enable_if_predicate = typename std::enable_if<is_predicate<F, T>::value, R>::type;
-
-template<class F, class T, class R = void>
-using enable_if_unary_op = typename std::enable_if<is_unary_op<F, T>::value, R>::type;
-
-// =========================================================================
 // not_fn (C++17 std::not_fn обратно портирован на C++14)
 // =========================================================================
 
@@ -76,12 +54,11 @@ auto not_fn(Predicate&& p) {
 //!
 
 template<class Operation, class It,
-         class = typename std::enable_if<
+         class = std::enable_if_t<
                               std::is_convertible<
                                   decltype(std::declval<const Operation&>()(*std::declval<const It&>())),
                                   bool
-                                  >::value
-                              >::type>
+                                  >::value>>
 class skip_iterator
 {
     It first;
@@ -272,7 +249,7 @@ auto GreaterEqual(T value) { return [val = std::move(value)](auto&& x) { return 
 //! Преобразования контейнера по цепочке
 //!
 
-namespace Query
+namespace Query2
 {
 
 template<class ForwardIterator>
@@ -298,30 +275,30 @@ public:
             skip_iterator(first, last, Op), skip_iterator(last, last, std::forward<A>(Op)));
     }
 
-    auto ExcludeLastElement() const                            { return QueryContainer(first, first != last ? std::prev(last) : last); }
+    auto ExcludeLastElement() const                { return QueryContainer(first, first != last ? std::prev(last) : last); }
 
-    auto Accumulate() const                                    { return std::accumulate(first, last, 0);          }
-    template<class T = value_type> auto Average() const        { return average<ForwardIterator, T>(first, last); }
-    auto Median() const                                        { return median(first, last);                      }
+    auto Accumulate() const                        { return std::accumulate(first, last, value_type()); }
+    auto Average() const                           { return average(first, last);                       }
+    auto Median() const                            { return median(first, last);                        }
 
-    template<class A> auto Max(A&& Op) const                   { return first != last ? *std::max_element(first, last, std::forward<A>(Op)) : value_type(); }
-    template<class A> auto Min(A&& Op) const                   { return first != last ? *std::min_element(first, last, std::forward<A>(Op)) : value_type(); }
-    auto Max() const                                           { return first != last ? *std::max_element(first, last)                      : value_type(); }
-    auto Min() const                                           { return first != last ? *std::min_element(first, last)                      : value_type(); }
-    auto Spread() const                                        { return first != last ? Max() - Min()                                       : value_type(); }
+    template<class A> auto Max(A&& Op) const       { return first != last ? *std::max_element(first, last, std::forward<A>(Op)) : value_type(); }
+    template<class A> auto Min(A&& Op) const       { return first != last ? *std::min_element(first, last, std::forward<A>(Op)) : value_type(); }
+    auto Max() const                               { return first != last ? *std::max_element(first, last)                      : value_type(); }
+    auto Min() const                               { return first != last ? *std::min_element(first, last)                      : value_type(); }
+    auto Spread() const                            { return first != last ? Max() - Min()                                       : value_type(); }
 
-    size_t Count() const                                       { return first == last ? 0 : std::distance(first, last);  }
-    size_t Count(const value_type& val) const                  { return std::count(first, last, val);                    }
-    template<class A> size_t CountIf(A&& Op) const             { return std::count_if(first, last, std::forward<A>(Op)); }
+    size_t Count() const                           { return first == last ? 0 : std::distance(first, last);  }
+    size_t Count(const value_type& val) const      { return std::count(first, last, val);                    }
+    template<class A> size_t CountIf(A&& Op) const { return std::count_if(first, last, std::forward<A>(Op)); }
 
-    template<class A> void Do(A&& Op) const                    { std::for_each(first, last, std::forward<A>(Op));           }
-    template<class Container> void Insert(Container& C) const  { std::copy(first, last, back_inserter(C));                  }
-    template<class A> bool Any(A&& Op) const                   { return std::any_of(first, last, std::forward<A>(Op));      }
-    template<class A> bool None(A&& Op) const                  { return std::none_of(first, last, std::forward<A>(Op));     }
-    template<class A> bool All(A&& Op) const                   { return std::all_of(first, last, std::forward<A>(Op));      }
+    template<class A> void Do(A&& Op) const        { std::for_each(first, last, std::forward<A>(Op));       }
+    template<class C> void Insert(C& Cont) const   { std::copy(first, last, back_inserter(Cont));           }
+    template<class A> bool Any(A&& Op) const       { return std::any_of(first, last, std::forward<A>(Op));  }
+    template<class A> bool None(A&& Op) const      { return std::none_of(first, last, std::forward<A>(Op)); }
+    template<class A> bool All(A&& Op) const       { return std::all_of(first, last, std::forward<A>(Op));  }
 
     template<class A, class... Args> void Call(A&& Op, Args&&... args) const {
-        std::for_each(first, last, std::bind(std::forward<A>(Op), _1, std::forward<Args>(args)...)); }
+        std::for_each(first, last, std::bind(std::forward<A>(Op), std::placeholders::_1, std::forward<Args>(args)...)); }
 
 private:
     ForwardIterator first, last;
@@ -334,6 +311,6 @@ private:
 template<class ForwardIterator> auto For(ForwardIterator first, ForwardIterator last) { return QueryContainer(first, last); }
 template<class Container>       auto For(const Container& container)                  { return QueryContainer(std::begin(container), std::end(container));     }
 
-}  //namespace Query
+}  //namespace Query2
 
 #endif // QUERIES_H
