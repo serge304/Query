@@ -1,6 +1,38 @@
 ```
+# Compiled and build artifacts
 *.o
 *.obj
 *.out
-Query_test
+build/
+dist/
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.egg-info/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# System files
+.DS_Store
+Thumbs.db
 ```
