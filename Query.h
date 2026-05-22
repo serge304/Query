@@ -56,7 +56,7 @@ auto not_fn(Predicate&& p) {
 template<class Operation, class It,
          class = std::enable_if_t<
                               std::is_convertible<
-                                  decltype(std::declval<const Operation&>()(*std::declval<const It&>())),
+                                  decltype(detail::invoke(std::declval<const Operation&>(), *std::declval<const It&>())),
                                   bool
                                   >::value>>
 class skip_iterator
@@ -173,28 +173,28 @@ transform_iterator<Operation, It> make_transform_iterator(It it, Operation op) {
 
 template<class OP, typename T>
 auto Less(OP op, T val) {
-    return [val = std::move(val), op = std::move(op)](auto&& elem) mutable {
+    return [val = std::move(val), op = std::move(op)](auto&& elem) {
         return detail::invoke(op, std::forward<decltype(elem)>(elem)) < val;
     };
 }
 
 template<class OP, typename T>
 auto Greater(OP op, T val) {
-    return [val = std::move(val), op = std::move(op)](auto&& elem) mutable {
+    return [val = std::move(val), op = std::move(op)](auto&& elem) {
         return detail::invoke(op, std::forward<decltype(elem)>(elem)) > val;
     };
 }
 
 template<class OP, typename T>
 auto Is(OP op, T val) {
-    return [val = std::move(val), op = std::move(op)](auto&& elem) mutable {
+    return [val = std::move(val), op = std::move(op)](auto&& elem) {
         return detail::invoke(op, std::forward<decltype(elem)>(elem)) == val;
     };
 }
 
 template<class OP, typename T>
 auto IsNot(OP op, T val) {
-    return [val = std::move(val), op = std::move(op)](auto&& elem) mutable {
+    return [val = std::move(val), op = std::move(op)](auto&& elem) {
         return detail::invoke(op, std::forward<decltype(elem)>(elem)) != val;
     };
 }
@@ -265,14 +265,14 @@ public:
     {
         using IterT = transform_iterator<typename std::decay<A>::type, ForwardIterator>;
         return QueryContainer<IterT>(
-            transform_iterator(first, Op), transform_iterator(last, std::forward<A>(Op)));    
+            IterT(first, Op), IterT(last, std::forward<A>(Op)));    
     }
 
     template<class A> auto Where(A&& Op) const 
     { 
         using IterT = skip_iterator<typename std::decay<A>::type, ForwardIterator>;
         return QueryContainer<IterT>(
-            skip_iterator(first, last, Op), skip_iterator(last, last, std::forward<A>(Op)));
+            IterT(first, last, Op), IterT(last, last, std::forward<A>(Op)));
     }
 
     auto ExcludeLastElement() const                { return QueryContainer(first, first != last ? std::prev(last) : last); }
@@ -297,10 +297,27 @@ public:
     template<class A> bool None(A&& Op) const      { return std::none_of(first, last, std::forward<A>(Op)); }
     template<class A> bool All(A&& Op) const       { return std::all_of(first, last, std::forward<A>(Op));  }
 
+    // Версии без функтора: проверяют приводимость элементов к bool
+    bool Any() const {
+        return std::any_of(first, last, &ToBool);
+    }
+    
+    bool All() const {
+        return std::all_of(first, last, &ToBool);
+    }
+    bool None() const {
+        return std::none_of(first, last, &ToBool);
+    }
+
     template<class A, class... Args> void Call(A&& Op, Args&&... args) const {
         std::for_each(first, last, std::bind(std::forward<A>(Op), std::placeholders::_1, std::forward<Args>(args)...)); }
 
 private:
+    // Вспомогательная функция для преобразования значения в bool
+    static bool ToBool(const value_type& val) {
+        return static_cast<bool>(val);
+    }
+
     ForwardIterator first, last;
 };
 
@@ -308,8 +325,8 @@ private:
 // For
 //
 
-template<class ForwardIterator> auto For(ForwardIterator first, ForwardIterator last) { return QueryContainer(first, last); }
-template<class Container>       auto For(const Container& container)                  { return QueryContainer(std::begin(container), std::end(container));     }
+template<class ForwardIterator> auto For(ForwardIterator first, ForwardIterator last) { return QueryContainer<ForwardIterator>(first, last); }
+template<class Container>       auto For(const Container& container)                  { return QueryContainer<decltype(std::begin(container))>(std::begin(container), std::end(container));     }
 
 }  //namespace Query2
 
